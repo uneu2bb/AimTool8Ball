@@ -1,70 +1,66 @@
 package com.aimtool.eightball
 
 import android.content.Context
-import android.graphics.*
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.DashPathEffect
+import android.graphics.Paint
 import android.view.MotionEvent
 import android.view.View
 import kotlin.math.sqrt
 
 class OverlayView(context: Context) : View(context) {
 
-    private val aimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#FFEB3B")
-        strokeWidth = 5f
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-    }
+    private val aimPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val bankPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val handleFill = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val handleStroke = Paint(Paint.ANTI_ALIAS_FLAG)
 
-    private val bankPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#00E676")
-        strokeWidth = 4.5f
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-        pathEffect = DashPathEffect(floatArrayOf(18f, 10f), 0f)
-    }
-
-    private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
-        style = Paint.Style.FILL
-    }
-
-    private val handleStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#FFEB3B")
-        style = Paint.Style.STROKE
-        strokeWidth = 3f
-    }
-
-    data class AimLine(
-        var startX: Float,
-        var startY: Float,
-        var endX: Float,
-        var endY: Float,
-        var isBank: Boolean = false
-    )
-
-    private val lines = mutableListOf<AimLine>()
+    private val lines = ArrayList<FloatArray>()
     private var bankMode = false
     var editMode = true
 
     private var activeIndex = -1
-    private var draggingStart = true
-    private val handleRadius = 30f
+    private var dragStart = true
+    private val handleR = 32f
 
-    private var tableLeft = 60f
-    private var tableTop = 160f
-    private var tableRight = 1000f
-    private var tableBottom = 1800f
+    private var tableL = 50f
+    private var tableT = 150f
+    private var tableR = 1000f
+    private var tableB = 1800f
+
+    init {
+        aimPaint.color = Color.parseColor("#FFEB3B")
+        aimPaint.strokeWidth = 5f
+        aimPaint.style = Paint.Style.STROKE
+        aimPaint.strokeCap = Paint.Cap.ROUND
+
+        bankPaint.color = Color.parseColor("#00E676")
+        bankPaint.strokeWidth = 4.5f
+        bankPaint.style = Paint.Style.STROKE
+        bankPaint.strokeCap = Paint.Cap.ROUND
+        bankPaint.pathEffect = DashPathEffect(floatArrayOf(16f, 10f), 0f)
+
+        handleFill.color = Color.WHITE
+        handleFill.style = Paint.Style.FILL
+
+        handleStroke.color = Color.parseColor("#FFEB3B")
+        handleStroke.style = Paint.Style.STROKE
+        handleStroke.strokeWidth = 3f
+    }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        tableRight = w - 60f
-        tableBottom = h - 160f
+        tableR = w - 50f
+        tableB = h - 150f
     }
 
     fun addNewLine() {
         val cx = width / 2f
         val cy = height / 2f
-        lines.add(AimLine(cx - 180f, cy, cx + 180f, cy, bankMode))
+        // [startX, startY, endX, endY, isBank(0/1)]
+        val bank = if (bankMode) 1f else 0f
+        lines.add(floatArrayOf(cx - 160f, cy, cx + 160f, cy, bank))
         invalidate()
     }
 
@@ -85,70 +81,59 @@ class OverlayView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-
         for (line in lines) {
-            canvas.drawLine(line.startX, line.startY, line.endX, line.endY, aimPaint)
-
+            canvas.drawLine(line[0], line[1], line[2], line[3], aimPaint)
             if (editMode) {
-                drawHandle(canvas, line.startX, line.startY)
-                drawHandle(canvas, line.endX, line.endY)
+                canvas.drawCircle(line[0], line[1], handleR, handleFill)
+                canvas.drawCircle(line[0], line[1], handleR, handleStroke)
+                canvas.drawCircle(line[2], line[3], handleR, handleFill)
+                canvas.drawCircle(line[2], line[3], handleR, handleStroke)
             }
-
-            if (line.isBank) {
-                drawBankReflection(canvas, line)
+            if (line[4] > 0.5f) {
+                drawBank(canvas, line)
             }
         }
     }
 
-    private fun drawHandle(canvas: Canvas, x: Float, y: Float) {
-        canvas.drawCircle(x, y, handleRadius, handlePaint)
-        canvas.drawCircle(x, y, handleRadius, handleStroke)
-    }
-
-    private fun drawBankReflection(canvas: Canvas, line: AimLine) {
-        val dx = line.endX - line.startX
-        val dy = line.endY - line.startY
+    private fun drawBank(canvas: Canvas, line: FloatArray) {
+        val dx = line[2] - line[0]
+        val dy = line[3] - line[1]
         val len = sqrt(dx * dx + dy * dy)
         if (len < 1f) return
 
         val dirX = dx / len
         val dirY = dy / len
 
-        var hitX = line.endX
-        var hitY = line.endY
+        var hitX = line[2]
+        var hitY = line[3]
         var nx = 0f
         var ny = 0f
         var found = false
-
         var t = 0f
-        while (t < 2000f && !found) {
-            t += 4f
-            val px = line.endX + dirX * t
-            val py = line.endY + dirY * t
 
-            if (px <= tableLeft) {
-                hitX = tableLeft; hitY = py; nx = 1f; ny = 0f; found = true
-            } else if (px >= tableRight) {
-                hitX = tableRight; hitY = py; nx = -1f; ny = 0f; found = true
-            } else if (py <= tableTop) {
-                hitX = px; hitY = tableTop; nx = 0f; ny = 1f; found = true
-            } else if (py >= tableBottom) {
-                hitX = px; hitY = tableBottom; nx = 0f; ny = -1f; found = true
+        while (t < 2500f && !found) {
+            t += 5f
+            val px = line[2] + dirX * t
+            val py = line[3] + dirY * t
+            if (px <= tableL) {
+                hitX = tableL; hitY = py; nx = 1f; ny = 0f; found = true
+            } else if (px >= tableR) {
+                hitX = tableR; hitY = py; nx = -1f; ny = 0f; found = true
+            } else if (py <= tableT) {
+                hitX = px; hitY = tableT; nx = 0f; ny = 1f; found = true
+            } else if (py >= tableB) {
+                hitX = px; hitY = tableB; nx = 0f; ny = -1f; found = true
             }
         }
-
         if (!found) return
 
-        canvas.drawLine(line.endX, line.endY, hitX, hitY, bankPaint)
-
+        canvas.drawLine(line[2], line[3], hitX, hitY, bankPaint)
         val dot = dirX * nx + dirY * ny
         val rx = dirX - 2f * dot * nx
         val ry = dirY - 2f * dot * ny
-
-        val reflectLen = 400f
-        canvas.drawLine(hitX, hitY, hitX + rx * reflectLen, hitY + ry * reflectLen, bankPaint)
-        canvas.drawCircle(hitX, hitY, 14f, handlePaint)
-        canvas.drawCircle(hitX, hitY, 14f, bankPaint)
+        canvas.drawLine(hitX, hitY, hitX + rx * 380f, hitY + ry * 380f, bankPaint)
+        canvas.drawCircle(hitX, hitY, 12f, handleFill)
+        canvas.drawCircle(hitX, hitY, 12f, bankPaint)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -158,14 +143,14 @@ class OverlayView(context: Context) : View(context) {
             MotionEvent.ACTION_DOWN -> {
                 for (i in lines.indices) {
                     val line = lines[i]
-                    if (dist(event.x, event.y, line.startX, line.startY) < handleRadius * 2f) {
+                    if (dist(event.x, event.y, line[0], line[1]) < handleR * 2f) {
                         activeIndex = i
-                        draggingStart = true
+                        dragStart = true
                         return true
                     }
-                    if (dist(event.x, event.y, line.endX, line.endY) < handleRadius * 2f) {
+                    if (dist(event.x, event.y, line[2], line[3]) < handleR * 2f) {
                         activeIndex = i
-                        draggingStart = false
+                        dragStart = false
                         return true
                     }
                 }
@@ -173,12 +158,12 @@ class OverlayView(context: Context) : View(context) {
             MotionEvent.ACTION_MOVE -> {
                 if (activeIndex >= 0 && activeIndex < lines.size) {
                     val line = lines[activeIndex]
-                    if (draggingStart) {
-                        line.startX = event.x
-                        line.startY = event.y
+                    if (dragStart) {
+                        line[0] = event.x
+                        line[1] = event.y
                     } else {
-                        line.endX = event.x
-                        line.endY = event.y
+                        line[2] = event.x
+                        line[3] = event.y
                     }
                     invalidate()
                     return true
@@ -192,8 +177,8 @@ class OverlayView(context: Context) : View(context) {
     }
 
     private fun dist(x1: Float, y1: Float, x2: Float, y2: Float): Float {
-        val dx = x1 - x2
-        val dy = y1 - y2
-        return sqrt(dx * dx + dy * dy)
+        val a = x1 - x2
+        val b = y1 - y2
+        return sqrt(a * a + b * b)
     }
 }

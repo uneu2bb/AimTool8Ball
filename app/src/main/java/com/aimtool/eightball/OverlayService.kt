@@ -1,12 +1,19 @@
 package com.aimtool.eightball
 
-import android.app.*
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Service
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
-import android.view.*
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.MotionEvent
+import android.view.View
+import android.view.WindowManager
 import android.widget.ImageButton
 import android.widget.Toast
 import androidx.appcompat.view.ContextThemeWrapper
@@ -26,7 +33,7 @@ class OverlayService : Service() {
     override fun onCreate() {
         super.onCreate()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        startForegroundNotification()
+        startFg()
 
         if (!Settings.canDrawOverlays(this)) {
             Toast.makeText(this, "الصلاحية غير مفعلة", Toast.LENGTH_LONG).show()
@@ -39,23 +46,17 @@ class OverlayService : Service() {
             setupControls()
             Toast.makeText(this, "الأداة تعمل - اسحب المقابض البيضاء", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
-            Toast.makeText(this, "خطأ: ${e.message}", Toast.LENGTH_LONG).show()
-            e.printStackTrace()
+            Toast.makeText(this, "خطأ: " + e.message, Toast.LENGTH_LONG).show()
             stopSelf()
         }
     }
 
-    private fun startForegroundNotification() {
+    private fun startFg() {
         val channelId = "aim_tool_channel"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                channelId,
-                getString(R.string.channel_name),
-                NotificationManager.IMPORTANCE_LOW
-            )
+            val channel = NotificationChannel(channelId, "Aim Tool", NotificationManager.IMPORTANCE_LOW)
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
-
         val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("Aim Tool 8 Ball")
             .setContentText("الأداة تعمل الآن")
@@ -63,8 +64,10 @@ class OverlayService : Service() {
             .setOngoing(true)
             .build()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(1, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        if (Build.VERSION.SDK_INT >= 34) {
+            startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(1, notification)
         } else {
             startForeground(1, notification)
         }
@@ -72,52 +75,48 @@ class OverlayService : Service() {
 
     private fun setupOverlay() {
         overlayView = OverlayView(this)
-
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         else
+            @Suppress("DEPRECATION")
             WindowManager.LayoutParams.TYPE_PHONE
 
-        // وضع التعديل: قابل للمس
         overlayParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             type,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         )
-
         windowManager?.addView(overlayView, overlayParams)
     }
 
-    private fun updateOverlayTouch(editable: Boolean) {
-        overlayParams?.let { params ->
-            if (editable) {
-                // قابل للمس عشان تسحب الخطوط
-                params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-            } else {
-                // مو قابل للمس عشان تلعب طبيعي
-                params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-            }
-            windowManager?.updateViewLayout(overlayView, params)
+    private fun updateTouch(editable: Boolean) {
+        val params = overlayParams ?: return
+        if (editable) {
+            params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+        } else {
+            params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
         }
+        windowManager?.updateViewLayout(overlayView, params)
         overlayView?.setEditMode(editable)
     }
 
     private fun setupControls() {
-        val themedContext = ContextThemeWrapper(this, R.style.Theme_AimTool8Ball)
-        controlsView = LayoutInflater.from(themedContext).inflate(R.layout.overlay_controls, null)
+        val themed = ContextThemeWrapper(this, R.style.Theme_AimTool8Ball)
+        controlsView = LayoutInflater.from(themed).inflate(R.layout.overlay_controls, null)
 
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         else
+            @Suppress("DEPRECATION")
             WindowManager.LayoutParams.TYPE_PHONE
 
         controlsParams = WindowManager.LayoutParams(
@@ -126,31 +125,28 @@ class OverlayService : Service() {
             type,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = 30
-            y = 250
-        }
+        )
+        controlsParams?.gravity = Gravity.TOP or Gravity.START
+        controlsParams?.x = 30
+        controlsParams?.y = 250
 
-        // سحب لوحة التحكم
         controlsView?.setOnTouchListener(object : View.OnTouchListener {
-            private var initialX = 0
-            private var initialY = 0
-            private var initialTouchX = 0f
-            private var initialTouchY = 0f
-
-            override fun onTouch(v: View, event: MotionEvent): Boolean {
-                when (event.action) {
+            var ix = 0
+            var iy = 0
+            var tx = 0f
+            var ty = 0f
+            override fun onTouch(v: View, e: MotionEvent): Boolean {
+                when (e.action) {
                     MotionEvent.ACTION_DOWN -> {
-                        initialX = controlsParams?.x ?: 0
-                        initialY = controlsParams?.y ?: 0
-                        initialTouchX = event.rawX
-                        initialTouchY = event.rawY
+                        ix = controlsParams?.x ?: 0
+                        iy = controlsParams?.y ?: 0
+                        tx = e.rawX
+                        ty = e.rawY
                         return true
                     }
                     MotionEvent.ACTION_MOVE -> {
-                        controlsParams?.x = initialX + (event.rawX - initialTouchX).toInt()
-                        controlsParams?.y = initialY + (event.rawY - initialTouchY).toInt()
+                        controlsParams?.x = ix + (e.rawX - tx).toInt()
+                        controlsParams?.y = iy + (e.rawY - ty).toInt()
                         windowManager?.updateViewLayout(controlsView, controlsParams)
                         return true
                     }
@@ -161,32 +157,22 @@ class OverlayService : Service() {
 
         controlsView?.findViewById<ImageButton>(R.id.btnAddLine)?.setOnClickListener {
             overlayView?.addNewLine()
-            Toast.makeText(this, "خط جديد - اسحب المقابض البيضاء", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "اسحب المقابض البيضاء", Toast.LENGTH_SHORT).show()
         }
-
         controlsView?.findViewById<ImageButton>(R.id.btnClear)?.setOnClickListener {
             overlayView?.clearAll()
         }
-
         controlsView?.findViewById<ImageButton>(R.id.btnBank)?.setOnClickListener {
             overlayView?.toggleBankMode()
-            // نضيف خط Bank جديد
             overlayView?.addNewLine()
-            Toast.makeText(this, "Bank Shot - حرّك الخط نحو الحافة", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Bank Shot - حرّك نحو الحافة", Toast.LENGTH_SHORT).show()
         }
-
-        // زر التبديل بين وضع التعديل ووضع اللعب
         controlsView?.findViewById<ImageButton>(R.id.btnClose)?.setOnClickListener {
             isEditMode = !isEditMode
-            updateOverlayTouch(isEditMode)
-            if (isEditMode) {
-                Toast.makeText(this, "وضع التعديل: اسحب الخطوط", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, "وضع اللعب: الخطوط ثابتة", Toast.LENGTH_SHORT).show()
-            }
+            updateTouch(isEditMode)
+            val msg = if (isEditMode) "وضع التعديل" else "وضع اللعب"
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
-
-        // ضغطة طويلة على زر الإغلاق = إيقاف الأداة
         controlsView?.findViewById<ImageButton>(R.id.btnClose)?.setOnLongClickListener {
             stopSelf()
             true
@@ -200,7 +186,8 @@ class OverlayService : Service() {
         try {
             overlayView?.let { windowManager?.removeView(it) }
             controlsView?.let { windowManager?.removeView(it) }
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+        }
         overlayView = null
         controlsView = null
     }

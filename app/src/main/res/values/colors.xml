@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="green_primary">#1B5E20</color>
+    <color name="green_dark">#0D3B12</color>
+    <color name="aim_line">#FFEB3B</color>
+    <color name="bank_line">#00E676</color>
+    <color name="cue_ball">#FFFFFF</color>
+    <color name="control_bg">#CC000000</color>
+</resources>

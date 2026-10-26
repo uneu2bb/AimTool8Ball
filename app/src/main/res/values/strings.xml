@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Aim Tool 8 Ball</string>
+    <string name="start_overlay">تشغيل الأداة</string>
+    <string name="stop_overlay">إيقاف الأداة</string>
+    <string name="permission_needed">يجب منح صلاحية الظهور فوق التطبيقات</string>
+    <string name="overlay_running">الأداة تعمل الآن</string>
+    <string name="channel_name">Aim Tool Service</string>
+    <string name="channel_description">خدمة أداة التوجيه</string>
+</resources>

@@ -66,8 +66,6 @@ class OverlayService : Service() {
 
         if (Build.VERSION.SDK_INT >= 34) {
             startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(1, notification)
         } else {
             startForeground(1, notification)
         }
@@ -106,7 +104,7 @@ class OverlayService : Service() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
         }
         windowManager?.updateViewLayout(overlayView, params)
-        overlayView?.setEditMode(editable)
+        overlayView?.enableEditMode(editable)
     }
 
     private fun setupControls() {

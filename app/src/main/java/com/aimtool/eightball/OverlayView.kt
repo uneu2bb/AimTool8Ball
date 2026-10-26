@@ -18,7 +18,7 @@ class OverlayView(context: Context) : View(context) {
 
     private val lines = ArrayList<FloatArray>()
     private var bankMode = false
-    var editMode = true
+    private var isEditMode = true
 
     private var activeIndex = -1
     private var dragStart = true
@@ -58,7 +58,6 @@ class OverlayView(context: Context) : View(context) {
     fun addNewLine() {
         val cx = width / 2f
         val cy = height / 2f
-        // [startX, startY, endX, endY, isBank(0/1)]
         val bank = if (bankMode) 1f else 0f
         lines.add(floatArrayOf(cx - 160f, cy, cx + 160f, cy, bank))
         invalidate()
@@ -74,8 +73,8 @@ class OverlayView(context: Context) : View(context) {
         bankMode = !bankMode
     }
 
-    fun setEditMode(enabled: Boolean) {
-        editMode = enabled
+    fun enableEditMode(enabled: Boolean) {
+        isEditMode = enabled
         invalidate()
     }
 
@@ -83,7 +82,7 @@ class OverlayView(context: Context) : View(context) {
         super.onDraw(canvas)
         for (line in lines) {
             canvas.drawLine(line[0], line[1], line[2], line[3], aimPaint)
-            if (editMode) {
+            if (isEditMode) {
                 canvas.drawCircle(line[0], line[1], handleR, handleFill)
                 canvas.drawCircle(line[0], line[1], handleR, handleStroke)
                 canvas.drawCircle(line[2], line[3], handleR, handleFill)
@@ -137,7 +136,7 @@ class OverlayView(context: Context) : View(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (!editMode) return false
+        if (!isEditMode) return false
 
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {

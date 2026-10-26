@@ -12,8 +12,7 @@
         android:label="@string/app_name"
         android:roundIcon="@android:drawable/ic_menu_compass"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AimTool8Ball"
-        android:usesCleartextTraffic="true">
+        android:theme="@style/Theme.AimTool8Ball">
 
         <activity
             android:name=".MainActivity"
@@ -32,7 +31,7 @@
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="overlay_aim_tool" />
+                android:value="This service displays an overlay aiming guide for billiards practice" />
         </service>
 
     </application>

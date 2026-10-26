@@ -24,6 +24,7 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal">
 
+        <!-- إضافة خط -->
         <ImageButton
             android:id="@+id/btnAddLine"
             android:layout_width="42dp"
@@ -34,16 +35,7 @@
             android:scaleType="centerInside"
             android:padding="8dp" />
 
-        <ImageButton
-            android:id="@+id/btnClear"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
-            android:src="@android:drawable/ic_menu_delete"
-            android:background="#33FFFFFF"
-            android:contentDescription="clear"
-            android:scaleType="centerInside"
-            android:padding="8dp" />
-
+        <!-- Bank Shot -->
         <ImageButton
             android:id="@+id/btnBank"
             android:layout_width="42dp"
@@ -54,13 +46,25 @@
             android:scaleType="centerInside"
             android:padding="8dp" />
 
+        <!-- مسح -->
+        <ImageButton
+            android:id="@+id/btnClear"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
+            android:src="@android:drawable/ic_menu_delete"
+            android:background="#33FFFFFF"
+            android:contentDescription="clear"
+            android:scaleType="centerInside"
+            android:padding="8dp" />
+
+        <!-- تبديل وضع التعديل / إيقاف (ضغطة طويلة) -->
         <ImageButton
             android:id="@+id/btnClose"
             android:layout_width="42dp"
             android:layout_height="42dp"
             android:src="@android:drawable/ic_menu_close_clear_cancel"
             android:background="#33FFFFFF"
-            android:contentDescription="close"
+            android:contentDescription="toggle"
             android:scaleType="centerInside"
             android:padding="8dp" />
     </LinearLayout>

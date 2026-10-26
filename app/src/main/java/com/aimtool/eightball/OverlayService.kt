@@ -1,14 +1,24 @@
 package com.aimtool.eightball
 
+import android.app.Activity
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
 import android.graphics.PixelFormat
+import android.hardware.display.DisplayManager
+import android.hardware.display.VirtualDisplay
+import android.media.ImageReader
+import android.media.projection.MediaProjection
+import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.os.Handler
+import android.os.HandlerThread
 import android.os.IBinder
 import android.provider.Settings
+import android.util.DisplayMetrics
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -28,12 +38,45 @@ class OverlayService : Service() {
     private var overlayParams: WindowManager.LayoutParams? = null
     private var isEditMode = true
 
+    private var mediaProjection: MediaProjection? = null
+    private var virtualDisplay: VirtualDisplay? = null
+    private var imageReader: ImageReader? = null
+    private var captureThread: HandlerThread? = null
+    private var captureHandler: Handler? = null
+    private var screenWidth = 1080
+    private var screenHeight = 1920
+    private var screenDensity = 320
+    private var autoDetect = false
+
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent != null) {
+            val resultCode = intent.getIntExtra("resultCode", 0)
+            val data = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra("data", Intent::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra("data")
+            }
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                setupMediaProjection(resultCode, data)
+            }
+        }
+        return START_STICKY
+    }
 
     override fun onCreate() {
         super.onCreate()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         startFg()
+
+        val metrics = DisplayMetrics()
+        @Suppress("DEPRECATION")
+        windowManager?.defaultDisplay?.getRealMetrics(metrics)
+        screenWidth = metrics.widthPixels
+        screenHeight = metrics.heightPixels
+        screenDensity = metrics.densityDpi
 
         if (!Settings.canDrawOverlays(this)) {
             Toast.makeText(this, "الصلاحية غير مفعلة", Toast.LENGTH_LONG).show()
@@ -44,7 +87,7 @@ class OverlayService : Service() {
         try {
             setupOverlay()
             setupControls()
-            Toast.makeText(this, "الأداة تعمل - اسحب المقابض البيضاء", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "الأداة تعمل", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Toast.makeText(this, "خطأ: " + e.message, Toast.LENGTH_LONG).show()
             stopSelf()
@@ -65,10 +108,106 @@ class OverlayService : Service() {
             .build()
 
         if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            startForeground(
+                1,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+            )
         } else {
             startForeground(1, notification)
         }
+    }
+
+    private fun setupMediaProjection(resultCode: Int, data: Intent) {
+        val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        mediaProjection = mpm.getMediaProjection(resultCode, data)
+        mediaProjection?.registerCallback(object : MediaProjection.Callback() {
+            override fun onStop() {
+                stopCapture()
+            }
+        }, null)
+
+        captureThread = HandlerThread("capture").also { it.start() }
+        captureHandler = Handler(captureThread!!.looper)
+
+        imageReader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 2)
+        virtualDisplay = mediaProjection?.createVirtualDisplay(
+            "AimCapture",
+            screenWidth,
+            screenHeight,
+            screenDensity,
+            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+            imageReader?.surface,
+            null,
+            captureHandler
+        )
+
+        autoDetect = true
+        scheduleCapture()
+        Toast.makeText(this, "الكشف التلقائي مفعّل", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun scheduleCapture() {
+        captureHandler?.postDelayed(object : Runnable {
+            override fun run() {
+                if (autoDetect) {
+                    processFrame()
+                    captureHandler?.postDelayed(this, 400)
+                }
+            }
+        }, 500)
+    }
+
+    private fun processFrame() {
+        val reader = imageReader ?: return
+        val image = reader.acquireLatestImage() ?: return
+        try {
+            val plane = image.planes[0]
+            val buffer = plane.buffer
+            val pixelStride = plane.pixelStride
+            val rowStride = plane.rowStride
+            val rowPadding = rowStride - pixelStride * screenWidth
+
+            val bitmap = Bitmap.createBitmap(
+                screenWidth + rowPadding / pixelStride,
+                screenHeight,
+                Bitmap.Config.ARGB_8888
+            )
+            bitmap.copyPixelsFromBuffer(buffer)
+
+            val cropped = Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight)
+            bitmap.recycle()
+
+            val detected = LineDetector.detectYellowLine(cropped)
+            cropped.recycle()
+
+            if (detected != null) {
+                val extended = LineDetector.extendLine(detected, screenWidth, screenHeight)
+                overlayView?.setAutoLine(
+                    extended.x1, extended.y1, extended.x2, extended.y2
+                )
+            }
+        } catch (_: Exception) {
+        } finally {
+            image.close()
+        }
+    }
+
+    private fun stopCapture() {
+        autoDetect = false
+        try {
+            virtualDisplay?.release()
+            imageReader?.close()
+            mediaProjection?.stop()
+        } catch (_: Exception) {
+        }
+        virtualDisplay = null
+        imageReader = null
+        mediaProjection = null
+        captureThread?.quitSafely()
+        captureThread = null
+        captureHandler = null
     }
 
     private fun setupOverlay() {
@@ -155,15 +294,14 @@ class OverlayService : Service() {
 
         controlsView?.findViewById<ImageButton>(R.id.btnAddLine)?.setOnClickListener {
             overlayView?.addNewLine()
-            Toast.makeText(this, "اسحب المقابض البيضاء", Toast.LENGTH_SHORT).show()
         }
         controlsView?.findViewById<ImageButton>(R.id.btnClear)?.setOnClickListener {
             overlayView?.clearAll()
+            overlayView?.clearAutoLine()
         }
         controlsView?.findViewById<ImageButton>(R.id.btnBank)?.setOnClickListener {
             overlayView?.toggleBankMode()
             overlayView?.addNewLine()
-            Toast.makeText(this, "Bank Shot - حرّك نحو الحافة", Toast.LENGTH_SHORT).show()
         }
         controlsView?.findViewById<ImageButton>(R.id.btnClose)?.setOnClickListener {
             isEditMode = !isEditMode
@@ -181,6 +319,7 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        stopCapture()
         try {
             overlayView?.let { windowManager?.removeView(it) }
             controlsView?.let { windowManager?.removeView(it) }

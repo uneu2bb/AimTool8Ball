@@ -13,6 +13,7 @@ class OverlayView(context: Context) : View(context) {
 
     private val aimPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val bankPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val autoPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val handleFill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val handleStroke = Paint(Paint.ANTI_ALIAS_FLAG)
 
@@ -29,6 +30,13 @@ class OverlayView(context: Context) : View(context) {
     private var tableR = 1000f
     private var tableB = 1800f
 
+    // خط الكشف التلقائي
+    private var autoX1 = 0f
+    private var autoY1 = 0f
+    private var autoX2 = 0f
+    private var autoY2 = 0f
+    private var hasAutoLine = false
+
     init {
         aimPaint.color = Color.parseColor("#FFEB3B")
         aimPaint.strokeWidth = 5f
@@ -40,6 +48,12 @@ class OverlayView(context: Context) : View(context) {
         bankPaint.style = Paint.Style.STROKE
         bankPaint.strokeCap = Paint.Cap.ROUND
         bankPaint.pathEffect = DashPathEffect(floatArrayOf(16f, 10f), 0f)
+
+        autoPaint.color = Color.parseColor("#FF1744")
+        autoPaint.strokeWidth = 6f
+        autoPaint.style = Paint.Style.STROKE
+        autoPaint.strokeCap = Paint.Cap.ROUND
+        autoPaint.pathEffect = DashPathEffect(floatArrayOf(22f, 12f), 0f)
 
         handleFill.color = Color.WHITE
         handleFill.style = Paint.Style.FILL
@@ -69,6 +83,20 @@ class OverlayView(context: Context) : View(context) {
         invalidate()
     }
 
+    fun clearAutoLine() {
+        hasAutoLine = false
+        invalidate()
+    }
+
+    fun setAutoLine(x1: Float, y1: Float, x2: Float, y2: Float) {
+        autoX1 = x1
+        autoY1 = y1
+        autoX2 = x2
+        autoY2 = y2
+        hasAutoLine = true
+        post { invalidate() }
+    }
+
     fun toggleBankMode() {
         bankMode = !bankMode
     }
@@ -80,6 +108,12 @@ class OverlayView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+
+        // الخط التلقائي (أحمر متقطع)
+        if (hasAutoLine) {
+            canvas.drawLine(autoX1, autoY1, autoX2, autoY2, autoPaint)
+        }
+
         for (line in lines) {
             canvas.drawLine(line[0], line[1], line[2], line[3], aimPaint)
             if (isEditMode) {

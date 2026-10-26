@@ -26,41 +26,41 @@
 
         <ImageButton
             android:id="@+id/btnAddLine"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
             android:src="@android:drawable/ic_input_add"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="إضافة خط"
+            android:background="#33FFFFFF"
+            android:contentDescription="add"
             android:scaleType="centerInside"
             android:padding="8dp" />
 
         <ImageButton
             android:id="@+id/btnClear"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
             android:src="@android:drawable/ic_menu_delete"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="مسح"
+            android:background="#33FFFFFF"
+            android:contentDescription="clear"
             android:scaleType="centerInside"
             android:padding="8dp" />
 
         <ImageButton
             android:id="@+id/btnBank"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
             android:src="@android:drawable/ic_menu_compass"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Bank Shot"
+            android:background="#33FFFFFF"
+            android:contentDescription="bank"
             android:scaleType="centerInside"
             android:padding="8dp" />
 
         <ImageButton
             android:id="@+id/btnClose"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
             android:src="@android:drawable/ic_menu_close_clear_cancel"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="إغلاق"
+            android:background="#33FFFFFF"
+            android:contentDescription="close"
             android:scaleType="centerInside"
             android:padding="8dp" />
     </LinearLayout>

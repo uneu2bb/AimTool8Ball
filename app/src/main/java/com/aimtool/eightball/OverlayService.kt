@@ -9,6 +9,7 @@ import android.provider.Settings
 import android.view.*
 import android.widget.ImageButton
 import android.widget.Toast
+import androidx.appcompat.view.ContextThemeWrapper
 import androidx.core.app.NotificationCompat
 
 class OverlayService : Service() {
@@ -93,7 +94,9 @@ class OverlayService : Service() {
     }
 
     private fun setupControls() {
-        controlsView = LayoutInflater.from(this).inflate(R.layout.overlay_controls, null)
+        // مهم: نستخدم Context مع Theme عشان الـ Layout ما يفشل
+        val themedContext = ContextThemeWrapper(this, R.style.Theme_AimTool8Ball)
+        controlsView = LayoutInflater.from(themedContext).inflate(R.layout.overlay_controls, null)
 
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -112,7 +115,6 @@ class OverlayService : Service() {
             y = 300
         }
 
-        // سحب لوحة التحكم
         controlsView?.setOnTouchListener(object : View.OnTouchListener {
             private var initialX = 0
             private var initialY = 0

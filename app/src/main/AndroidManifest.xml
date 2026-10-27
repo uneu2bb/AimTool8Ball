@@ -32,7 +32,7 @@
             android:foregroundServiceType="specialUse|mediaProjection">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="overlay aiming guide with optional screen analysis" />
+                android:value="overlay aiming guide with screen aim-line tracking" />
         </service>
 
     </application>

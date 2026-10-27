@@ -1,8 +1,6 @@
 package com.aimtool.eightball
 
-import android.app.Activity
 import android.content.Intent
-import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -15,7 +13,6 @@ import androidx.appcompat.app.AppCompatActivity
 class MainActivity : AppCompatActivity() {
 
     private var isServiceRunning = false
-    private val REQ_CAPTURE = 1001
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,7 +33,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkPermissionAndStart() {
-        if (!Settings.canDrawOverlays(this)) {
+        if (Settings.canDrawOverlays(this)) {
+            startOverlay()
+        } else {
             Toast.makeText(this, getString(R.string.permission_needed), Toast.LENGTH_LONG).show()
             startActivity(
                 Intent(
@@ -44,33 +43,11 @@ class MainActivity : AppCompatActivity() {
                     Uri.parse("package:$packageName")
                 )
             )
-            return
-        }
-        // طلب التقاط الشاشة لكشف الخط
-        val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        startActivityForResult(mpm.createScreenCaptureIntent(), REQ_CAPTURE)
-    }
-
-    @Deprecated("Deprecated in Java")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQ_CAPTURE) {
-            if (resultCode == Activity.RESULT_OK && data != null) {
-                startOverlay(resultCode, data)
-            } else {
-                // حتى لو رفض التقاط الشاشة، شغّل الوضع اليدوي
-                Toast.makeText(this, "تم التشغيل يدوياً بدون كشف تلقائي", Toast.LENGTH_SHORT).show()
-                startOverlay(0, null)
-            }
         }
     }
 
-    private fun startOverlay(resultCode: Int, data: Intent?) {
+    private fun startOverlay() {
         val intent = Intent(this, OverlayService::class.java)
-        intent.putExtra("resultCode", resultCode)
-        if (data != null) {
-            intent.putExtra("data", data)
-        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(intent)
         } else {

@@ -19,10 +19,6 @@ import android.widget.Toast
 import androidx.appcompat.view.ContextThemeWrapper
 import androidx.core.app.NotificationCompat
 
-/**
- * النسخة المستقرة: خطوط يدوية + ارتداد متعدد قوي
- * الكشف التلقائي من الشاشة متوقف مؤقتاً لأنه كان غير دقيق
- */
 class OverlayService : Service() {
 
     private var windowManager: WindowManager? = null
@@ -48,7 +44,7 @@ class OverlayService : Service() {
         try {
             setupOverlay()
             setupControls()
-            Toast.makeText(this, "اسحب المقابض + استخدم Bank للارتداد الطويل", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "+ خط | بوصلة Bank | شبكة من المنتصف", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
             Toast.makeText(this, "خطأ: " + e.message, Toast.LENGTH_LONG).show()
             stopSelf()
@@ -130,7 +126,7 @@ class OverlayService : Service() {
         )
         controlsParams?.gravity = Gravity.TOP or Gravity.START
         controlsParams?.x = 30
-        controlsParams?.y = 250
+        controlsParams?.y = 200
 
         controlsView?.setOnTouchListener(object : View.OnTouchListener {
             var ix = 0
@@ -157,18 +153,28 @@ class OverlayService : Service() {
             }
         })
 
+        // +
         controlsView?.findViewById<ImageButton>(R.id.btnAddLine)?.setOnClickListener {
             overlayView?.addNewLine()
-            Toast.makeText(this, "اسحب المقابض البيضاء", Toast.LENGTH_SHORT).show()
         }
+        // ضغطة طويلة على + = شبكة من المنتصف
+        controlsView?.findViewById<ImageButton>(R.id.btnAddLine)?.setOnLongClickListener {
+            overlayView?.toggleGrid()
+            Toast.makeText(this, "شبكة الخطوط من وسط الطاولة", Toast.LENGTH_SHORT).show()
+            true
+        }
+
         controlsView?.findViewById<ImageButton>(R.id.btnClear)?.setOnClickListener {
             overlayView?.clearAll()
         }
+
+        // Bank
         controlsView?.findViewById<ImageButton>(R.id.btnBank)?.setOnClickListener {
             overlayView?.toggleBankMode()
             overlayView?.addNewLine()
-            Toast.makeText(this, "Bank: حرّك الخط نحو الحافة للارتداد الطويل", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Bank: اسحب الاتجاه للارتداد الطويل", Toast.LENGTH_SHORT).show()
         }
+
         controlsView?.findViewById<ImageButton>(R.id.btnClose)?.setOnClickListener {
             isEditMode = !isEditMode
             updateTouch(isEditMode)

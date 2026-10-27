@@ -3,7 +3,6 @@ package com.aimtool.eightball
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
 import android.view.MotionEvent
@@ -20,38 +19,50 @@ class OverlayView(context: Context) : View(context) {
     private val handleStroke = Paint(Paint.ANTI_ALIAS_FLAG)
     private val hitPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val pocketPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val pocketRing = Paint(Paint.ANTI_ALIAS_FLAG)
 
-    // ألوان المسارات مثل أدوات الـ aim الاحترافية
     private val pathColors = intArrayOf(
-        Color.parseColor("#FF1744"), // أحمر
-        Color.parseColor("#00E676"), // أخضر
-        Color.parseColor("#FFEB3B"), // أصفر
-        Color.parseColor("#D500F9"), // بنفسجي
-        Color.parseColor("#00B0FF"), // أزرق
-        Color.parseColor("#FF9100"), // برتقالي
-        Color.parseColor("#FFFFFF")  // أبيض
+        Color.parseColor("#FF1744"),
+        Color.parseColor("#00E676"),
+        Color.parseColor("#FFEB3B"),
+        Color.parseColor("#D500F9"),
+        Color.parseColor("#00B0FF"),
+        Color.parseColor("#FF9100"),
+        Color.parseColor("#FFFFFF")
     )
 
     private val pathPaints = Array(pathColors.size) { i ->
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = pathColors[i]
-            strokeWidth = 4.5f
+            strokeWidth = 6.5f
             style = Paint.Style.STROKE
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
         }
     }
 
+    private val guidePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#CCFFFFFF")
+        strokeWidth = 5f
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+    }
+
+    private val cushionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#99FFEB3B")
+        strokeWidth = 4f
+        style = Paint.Style.STROKE
+    }
+
     private val lines = ArrayList<FloatArray>()
     private var bankMode = false
     private var isEditMode = true
     private var showGrid = false
-    private var multiPathMode = true // مسارات متعددة الألوان من نفس الاتجاه
 
     private var activeIndex = -1
     private var dragStart = true
-    private val handleR = 34f
+    private val handleR = 36f
 
     private var tableL = 0f
     private var tableT = 0f
@@ -60,9 +71,12 @@ class OverlayView(context: Context) : View(context) {
     private var tableCX = 0f
     private var tableCY = 0f
 
+    // مواقع الجيوب الستة
+    private val pockets = Array(6) { FloatArray(2) }
+
     init {
         aimPaint.color = Color.parseColor("#FFEB3B")
-        aimPaint.strokeWidth = 5.5f
+        aimPaint.strokeWidth = 7f
         aimPaint.style = Paint.Style.STROKE
         aimPaint.strokeCap = Paint.Cap.ROUND
 
@@ -70,27 +84,37 @@ class OverlayView(context: Context) : View(context) {
         handleFill.style = Paint.Style.FILL
         handleStroke.color = Color.parseColor("#FFEB3B")
         handleStroke.style = Paint.Style.STROKE
-        handleStroke.strokeWidth = 3f
+        handleStroke.strokeWidth = 3.5f
 
         hitPaint.style = Paint.Style.FILL
 
-        arrowPaint.color = Color.parseColor("#FFEB3B")
         arrowPaint.style = Paint.Style.FILL
 
-        gridPaint.color = Color.parseColor("#55FFFFFF")
-        gridPaint.strokeWidth = 2f
-        gridPaint.style = Paint.Style.STROKE
-        gridPaint.pathEffect = DashPathEffect(floatArrayOf(10f, 8f), 0f)
+        pocketPaint.color = Color.parseColor("#E0FFFFFF")
+        pocketPaint.style = Paint.Style.FILL
+
+        pocketRing.color = Color.parseColor("#FFEB3B")
+        pocketRing.style = Paint.Style.STROKE
+        pocketRing.strokeWidth = 3f
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        tableL = w * 0.115f
-        tableR = w * 0.885f
-        tableT = h * 0.175f
-        tableB = h * 0.825f
+        // حدود أدق لسطح اللعب داخل الإطار الخشبي
+        tableL = w * 0.125f
+        tableR = w * 0.875f
+        tableT = h * 0.195f
+        tableB = h * 0.805f
         tableCX = (tableL + tableR) / 2f
         tableCY = (tableT + tableB) / 2f
+
+        // 6 جيوب: 4 زوايا + وسط الأعلى والأسفل
+        pockets[0][0] = tableL; pockets[0][1] = tableT           // أعلى يسار
+        pockets[1][0] = tableCX; pockets[1][1] = tableT          // أعلى وسط
+        pockets[2][0] = tableR; pockets[2][1] = tableT           // أعلى يمين
+        pockets[3][0] = tableL; pockets[3][1] = tableB           // أسفل يسار
+        pockets[4][0] = tableCX; pockets[4][1] = tableB          // أسفل وسط
+        pockets[5][0] = tableR; pockets[5][1] = tableB           // أسفل يمين
     }
 
     fun addNewLine() {
@@ -115,13 +139,17 @@ class OverlayView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (showGrid) drawCenterGrid(canvas)
+
+        if (showGrid) {
+            drawPocketGuides(canvas)
+            drawCushionGuides(canvas)
+            drawPocketMarkers(canvas)
+        }
 
         for ((index, line) in lines.withIndex()) {
             val colorIndex = index % pathPaints.size
             val paint = pathPaints[colorIndex]
 
-            // الخط الأساسي
             canvas.drawLine(line[0], line[1], line[2], line[3], paint)
             drawArrowHead(canvas, line[0], line[1], line[2], line[3], paint.color)
 
@@ -132,17 +160,77 @@ class OverlayView(context: Context) : View(context) {
                 canvas.drawCircle(line[2], line[3], handleR, handleStroke)
             }
 
-            // مسار ارتداد طويل متعدد الألوان (مثل الصور المرجعية)
-            if (line[4] > 0.5f || multiPathMode) {
-                drawProTrajectory(canvas, line[0], line[1], line[2], line[3], colorIndex)
+            // مسار ارتداد طويل
+            drawProTrajectory(canvas, line[0], line[1], line[2], line[3], colorIndex)
+
+            // خطوط من نهاية التوجيه نحو كل جيب
+            if (showGrid) {
+                drawLinesToPockets(canvas, line[2], line[3], colorIndex)
             }
         }
     }
 
-    /**
-     * مسار احترافي: عدة ارتدادات بألوان متغيرة + نقاط اصطدام
-     * يشبه أدوات الـ aim في الصور
-     */
+    /** خطوط سميكة من وسط الطاولة ومن نقاط مهمة نحو الجيوب */
+    private fun drawPocketGuides(canvas: Canvas) {
+        // من المركز لكل جيب
+        for (i in pockets.indices) {
+            val p = pathPaints[i % pathPaints.size]
+            val thick = Paint(p)
+            thick.strokeWidth = 5.5f
+            thick.alpha = 180
+            canvas.drawLine(tableCX, tableCY, pockets[i][0], pockets[i][1], thick)
+        }
+
+        // خطوط بين الجيوب المتقابلة (مساعدة زاوية)
+        val cross = Paint(guidePaint)
+        cross.strokeWidth = 4f
+        cross.alpha = 140
+        // زوايا متقابلة
+        canvas.drawLine(pockets[0][0], pockets[0][1], pockets[5][0], pockets[5][1], cross)
+        canvas.drawLine(pockets[2][0], pockets[2][1], pockets[3][0], pockets[3][1], cross)
+        // وسط علوي/سفلي
+        canvas.drawLine(pockets[1][0], pockets[1][1], pockets[4][0], pockets[4][1], cross)
+    }
+
+    /** خطوط مساعدة على البنود (حواشي الطاولة) */
+    private fun drawCushionGuides(canvas: Canvas) {
+        val n = 5 // تقسيم كل ضلع
+        val paint = Paint(cushionPaint)
+        paint.strokeWidth = 3.5f
+
+        for (i in 1 until n) {
+            val fx = i / n.toFloat()
+            // عمودي من الأعلى للأسفل
+            val x = tableL + (tableR - tableL) * fx
+            canvas.drawLine(x, tableT, x, tableB, paint)
+            // أفقي من اليسار لليمين
+            val y = tableT + (tableB - tableT) * fx
+            canvas.drawLine(tableL, y, tableR, y, paint)
+        }
+
+        // إطار الطاولة أوضح
+        val border = Paint(guidePaint)
+        border.strokeWidth = 6f
+        border.color = Color.parseColor("#AAFFEB3B")
+        canvas.drawRect(tableL, tableT, tableR, tableB, border)
+    }
+
+    private fun drawPocketMarkers(canvas: Canvas) {
+        for (p in pockets) {
+            canvas.drawCircle(p[0], p[1], 14f, pocketPaint)
+            canvas.drawCircle(p[0], p[1], 14f, pocketRing)
+        }
+    }
+
+    private fun drawLinesToPockets(canvas: Canvas, x: Float, y: Float, colorIndex: Int) {
+        for (i in pockets.indices) {
+            val paint = Paint(pathPaints[(colorIndex + i) % pathPaints.size])
+            paint.strokeWidth = 3.5f
+            paint.alpha = 160
+            canvas.drawLine(x, y, pockets[i][0], pockets[i][1], paint)
+        }
+    }
+
     private fun drawProTrajectory(
         canvas: Canvas,
         sx: Float,
@@ -162,18 +250,16 @@ class OverlayView(context: Context) : View(context) {
         var cy = ey
 
         for (bounce in 0..10) {
-            val paint = pathPaints[(startColor + bounce) % pathPaints.size]
+            val paint = Paint(pathPaints[(startColor + bounce) % pathPaints.size])
+            paint.strokeWidth = 6f
             val hit = findHit(cx, cy, dirX, dirY)
             if (hit == null) {
                 canvas.drawLine(cx, cy, cx + dirX * 2200f, cy + dirY * 2200f, paint)
                 break
             }
-
             canvas.drawLine(cx, cy, hit[0], hit[1], paint)
-
-            // نقطة الاصطدام بلون المسار
             hitPaint.color = paint.color
-            canvas.drawCircle(hit[0], hit[1], 8f, hitPaint)
+            canvas.drawCircle(hit[0], hit[1], 10f, hitPaint)
 
             val nx = hit[2]
             val ny = hit[3]
@@ -188,55 +274,13 @@ class OverlayView(context: Context) : View(context) {
     private fun drawArrowHead(canvas: Canvas, x1: Float, y1: Float, x2: Float, y2: Float, color: Int) {
         arrowPaint.color = color
         val angle = atan2(y2 - y1, x2 - x1)
-        val size = 24f
+        val size = 28f
         val path = Path()
         path.moveTo(x2, y2)
         path.lineTo(x2 - size * cos(angle - 0.5f), y2 - size * sin(angle - 0.5f))
         path.lineTo(x2 - size * cos(angle + 0.5f), y2 - size * sin(angle + 0.5f))
         path.close()
         canvas.drawPath(path, arrowPaint)
-    }
-
-    private fun drawCenterGrid(canvas: Canvas) {
-        val count = 16
-        for (i in 0 until count) {
-            val angle = (Math.PI * 2.0 * i / count).toFloat()
-            val paint = pathPaints[i % pathPaints.size]
-            // شبكة بألوان متعددة خفيفة
-            val p = Paint(paint)
-            p.strokeWidth = 2f
-            p.alpha = 120
-            drawRay(canvas, tableCX, tableCY, cos(angle), sin(angle), p, 2)
-        }
-    }
-
-    private fun drawRay(
-        canvas: Canvas,
-        ox: Float,
-        oy: Float,
-        dirX0: Float,
-        dirY0: Float,
-        paint: Paint,
-        maxBounces: Int
-    ) {
-        var cx = ox
-        var cy = oy
-        var dirX = dirX0
-        var dirY = dirY0
-        for (b in 0..maxBounces) {
-            val hit = findHit(cx, cy, dirX, dirY) ?: run {
-                canvas.drawLine(cx, cy, cx + dirX * 1800f, cy + dirY * 1800f, paint)
-                return
-            }
-            canvas.drawLine(cx, cy, hit[0], hit[1], paint)
-            val nx = hit[2]
-            val ny = hit[3]
-            val dot = dirX * nx + dirY * ny
-            dirX -= 2f * dot * nx
-            dirY -= 2f * dot * ny
-            cx = hit[0] + dirX * 2f
-            cy = hit[1] + dirY * 2f
-        }
     }
 
     private fun findHit(cx: Float, cy: Float, dirX: Float, dirY: Float): FloatArray? {

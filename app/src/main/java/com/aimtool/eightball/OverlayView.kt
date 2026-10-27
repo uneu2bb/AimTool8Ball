@@ -16,17 +16,38 @@ import kotlin.math.sqrt
 class OverlayView(context: Context) : View(context) {
 
     private val aimPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val bankPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val handleFill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val handleStroke = Paint(Paint.ANTI_ALIAS_FLAG)
     private val hitPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    // ألوان المسارات مثل أدوات الـ aim الاحترافية
+    private val pathColors = intArrayOf(
+        Color.parseColor("#FF1744"), // أحمر
+        Color.parseColor("#00E676"), // أخضر
+        Color.parseColor("#FFEB3B"), // أصفر
+        Color.parseColor("#D500F9"), // بنفسجي
+        Color.parseColor("#00B0FF"), // أزرق
+        Color.parseColor("#FF9100"), // برتقالي
+        Color.parseColor("#FFFFFF")  // أبيض
+    )
+
+    private val pathPaints = Array(pathColors.size) { i ->
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = pathColors[i]
+            strokeWidth = 4.5f
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+    }
 
     private val lines = ArrayList<FloatArray>()
     private var bankMode = false
     private var isEditMode = true
     private var showGrid = false
+    private var multiPathMode = true // مسارات متعددة الألوان من نفس الاتجاه
 
     private var activeIndex = -1
     private var dragStart = true
@@ -41,20 +62,9 @@ class OverlayView(context: Context) : View(context) {
 
     init {
         aimPaint.color = Color.parseColor("#FFEB3B")
-        aimPaint.strokeWidth = 5f
+        aimPaint.strokeWidth = 5.5f
         aimPaint.style = Paint.Style.STROKE
         aimPaint.strokeCap = Paint.Cap.ROUND
-
-        bankPaint.color = Color.parseColor("#00E676")
-        bankPaint.strokeWidth = 4f
-        bankPaint.style = Paint.Style.STROKE
-        bankPaint.strokeCap = Paint.Cap.ROUND
-        bankPaint.pathEffect = DashPathEffect(floatArrayOf(12f, 8f), 0f)
-
-        gridPaint.color = Color.parseColor("#66FFFFFF")
-        gridPaint.strokeWidth = 2f
-        gridPaint.style = Paint.Style.STROKE
-        gridPaint.pathEffect = DashPathEffect(floatArrayOf(10f, 8f), 0f)
 
         handleFill.color = Color.WHITE
         handleFill.style = Paint.Style.FILL
@@ -62,16 +72,19 @@ class OverlayView(context: Context) : View(context) {
         handleStroke.style = Paint.Style.STROKE
         handleStroke.strokeWidth = 3f
 
-        hitPaint.color = Color.parseColor("#00E676")
         hitPaint.style = Paint.Style.FILL
 
         arrowPaint.color = Color.parseColor("#FFEB3B")
         arrowPaint.style = Paint.Style.FILL
+
+        gridPaint.color = Color.parseColor("#55FFFFFF")
+        gridPaint.strokeWidth = 2f
+        gridPaint.style = Paint.Style.STROKE
+        gridPaint.pathEffect = DashPathEffect(floatArrayOf(10f, 8f), 0f)
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        // معايرة لطاولة 8 Ball Pool الأفقية
         tableL = w * 0.115f
         tableR = w * 0.885f
         tableT = h * 0.175f
@@ -104,9 +117,13 @@ class OverlayView(context: Context) : View(context) {
         super.onDraw(canvas)
         if (showGrid) drawCenterGrid(canvas)
 
-        for (line in lines) {
-            canvas.drawLine(line[0], line[1], line[2], line[3], aimPaint)
-            drawArrowHead(canvas, line[0], line[1], line[2], line[3])
+        for ((index, line) in lines.withIndex()) {
+            val colorIndex = index % pathPaints.size
+            val paint = pathPaints[colorIndex]
+
+            // الخط الأساسي
+            canvas.drawLine(line[0], line[1], line[2], line[3], paint)
+            drawArrowHead(canvas, line[0], line[1], line[2], line[3], paint.color)
 
             if (isEditMode) {
                 canvas.drawCircle(line[0], line[1], handleR, handleFill)
@@ -114,18 +131,64 @@ class OverlayView(context: Context) : View(context) {
                 canvas.drawCircle(line[2], line[3], handleR, handleFill)
                 canvas.drawCircle(line[2], line[3], handleR, handleStroke)
             }
-            if (line[4] > 0.5f) {
-                drawLongPath(canvas, line[0], line[1], line[2], line[3])
-            } else {
-                // حتى الخط العادي يمتد شوي بعد النهاية
-                extendForward(canvas, line[0], line[1], line[2], line[3], 1.8f)
+
+            // مسار ارتداد طويل متعدد الألوان (مثل الصور المرجعية)
+            if (line[4] > 0.5f || multiPathMode) {
+                drawProTrajectory(canvas, line[0], line[1], line[2], line[3], colorIndex)
             }
         }
     }
 
-    private fun drawArrowHead(canvas: Canvas, x1: Float, y1: Float, x2: Float, y2: Float) {
+    /**
+     * مسار احترافي: عدة ارتدادات بألوان متغيرة + نقاط اصطدام
+     * يشبه أدوات الـ aim في الصور
+     */
+    private fun drawProTrajectory(
+        canvas: Canvas,
+        sx: Float,
+        sy: Float,
+        ex: Float,
+        ey: Float,
+        startColor: Int
+    ) {
+        val dx = ex - sx
+        val dy = ey - sy
+        val len = sqrt(dx * dx + dy * dy)
+        if (len < 1f) return
+
+        var dirX = dx / len
+        var dirY = dy / len
+        var cx = ex
+        var cy = ey
+
+        for (bounce in 0..10) {
+            val paint = pathPaints[(startColor + bounce) % pathPaints.size]
+            val hit = findHit(cx, cy, dirX, dirY)
+            if (hit == null) {
+                canvas.drawLine(cx, cy, cx + dirX * 2200f, cy + dirY * 2200f, paint)
+                break
+            }
+
+            canvas.drawLine(cx, cy, hit[0], hit[1], paint)
+
+            // نقطة الاصطدام بلون المسار
+            hitPaint.color = paint.color
+            canvas.drawCircle(hit[0], hit[1], 8f, hitPaint)
+
+            val nx = hit[2]
+            val ny = hit[3]
+            val dot = dirX * nx + dirY * ny
+            dirX -= 2f * dot * nx
+            dirY -= 2f * dot * ny
+            cx = hit[0] + dirX * 3f
+            cy = hit[1] + dirY * 3f
+        }
+    }
+
+    private fun drawArrowHead(canvas: Canvas, x1: Float, y1: Float, x2: Float, y2: Float, color: Int) {
+        arrowPaint.color = color
         val angle = atan2(y2 - y1, x2 - x1)
-        val size = 26f
+        val size = 24f
         val path = Path()
         path.moveTo(x2, y2)
         path.lineTo(x2 - size * cos(angle - 0.5f), y2 - size * sin(angle - 0.5f))
@@ -134,32 +197,35 @@ class OverlayView(context: Context) : View(context) {
         canvas.drawPath(path, arrowPaint)
     }
 
-    private fun extendForward(canvas: Canvas, sx: Float, sy: Float, ex: Float, ey: Float, factor: Float) {
-        val dx = ex - sx
-        val dy = ey - sy
-        val len = sqrt(dx * dx + dy * dy)
-        if (len < 1f) return
-        val ux = dx / len
-        val uy = dy / len
-        canvas.drawLine(ex, ey, ex + ux * len * factor, ey + uy * len * factor, bankPaint)
-    }
-
     private fun drawCenterGrid(canvas: Canvas) {
-        val count = 24
+        val count = 16
         for (i in 0 until count) {
             val angle = (Math.PI * 2.0 * i / count).toFloat()
-            drawRay(canvas, tableCX, tableCY, cos(angle), sin(angle), gridPaint, 3)
+            val paint = pathPaints[i % pathPaints.size]
+            // شبكة بألوان متعددة خفيفة
+            val p = Paint(paint)
+            p.strokeWidth = 2f
+            p.alpha = 120
+            drawRay(canvas, tableCX, tableCY, cos(angle), sin(angle), p, 2)
         }
     }
 
-    private fun drawRay(canvas: Canvas, ox: Float, oy: Float, dirX0: Float, dirY0: Float, paint: Paint, maxBounces: Int) {
+    private fun drawRay(
+        canvas: Canvas,
+        ox: Float,
+        oy: Float,
+        dirX0: Float,
+        dirY0: Float,
+        paint: Paint,
+        maxBounces: Int
+    ) {
         var cx = ox
         var cy = oy
         var dirX = dirX0
         var dirY = dirY0
         for (b in 0..maxBounces) {
             val hit = findHit(cx, cy, dirX, dirY) ?: run {
-                canvas.drawLine(cx, cy, cx + dirX * 2000f, cy + dirY * 2000f, paint)
+                canvas.drawLine(cx, cy, cx + dirX * 1800f, cy + dirY * 1800f, paint)
                 return
             }
             canvas.drawLine(cx, cy, hit[0], hit[1], paint)
@@ -173,38 +239,13 @@ class OverlayView(context: Context) : View(context) {
         }
     }
 
-    private fun drawLongPath(canvas: Canvas, sx: Float, sy: Float, ex: Float, ey: Float) {
-        val dx = ex - sx
-        val dy = ey - sy
-        val len = sqrt(dx * dx + dy * dy)
-        if (len < 1f) return
-        var dirX = dx / len
-        var dirY = dy / len
-        var cx = ex
-        var cy = ey
-        for (bounce in 0..8) {
-            val hit = findHit(cx, cy, dirX, dirY) ?: run {
-                canvas.drawLine(cx, cy, cx + dirX * 2500f, cy + dirY * 2500f, bankPaint)
-                return
-            }
-            canvas.drawLine(cx, cy, hit[0], hit[1], bankPaint)
-            canvas.drawCircle(hit[0], hit[1], 9f, hitPaint)
-            val nx = hit[2]
-            val ny = hit[3]
-            val dot = dirX * nx + dirY * ny
-            dirX -= 2f * dot * nx
-            dirY -= 2f * dot * ny
-            cx = hit[0] + dirX * 3f
-            cy = hit[1] + dirY * 3f
-        }
-    }
-
     private fun findHit(cx: Float, cy: Float, dirX: Float, dirY: Float): FloatArray? {
         var tHit = Float.MAX_VALUE
         var hx = 0f
         var hy = 0f
         var nx = 0f
         var ny = 0f
+
         if (dirX < -1e-4f) {
             val t = (tableL - cx) / dirX
             if (t > 1f && t < tHit) {

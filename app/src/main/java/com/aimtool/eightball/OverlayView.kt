@@ -19,8 +19,10 @@ class OverlayView(context: Context) : View(context) {
     private val handleStroke = Paint(Paint.ANTI_ALIAS_FLAG)
     private val hitPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val pocketPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val pocketRing = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val guidePaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     private val pathColors = intArrayOf(
         Color.parseColor("#FF1744"),
@@ -38,21 +40,7 @@ class OverlayView(context: Context) : View(context) {
             strokeWidth = 6.5f
             style = Paint.Style.STROKE
             strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
         }
-    }
-
-    private val guidePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#CCFFFFFF")
-        strokeWidth = 5f
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-    }
-
-    private val cushionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#99FFEB3B")
-        strokeWidth = 4f
-        style = Paint.Style.STROKE
     }
 
     private val lines = ArrayList<FloatArray>()
@@ -70,9 +58,14 @@ class OverlayView(context: Context) : View(context) {
     private var tableB = 0f
     private var tableCX = 0f
     private var tableCY = 0f
-
-    // مواقع الجيوب الستة
     private val pockets = Array(6) { FloatArray(2) }
+
+    // تتبع تلقائي ناعم
+    private var tx1 = 0f
+    private var ty1 = 0f
+    private var tx2 = 0f
+    private var ty2 = 0f
+    private var hasTrack = false
 
     init {
         aimPaint.color = Color.parseColor("#FFEB3B")
@@ -87,20 +80,26 @@ class OverlayView(context: Context) : View(context) {
         handleStroke.strokeWidth = 3.5f
 
         hitPaint.style = Paint.Style.FILL
-
         arrowPaint.style = Paint.Style.FILL
+
+        trackPaint.color = Color.parseColor("#FF1744")
+        trackPaint.strokeWidth = 7f
+        trackPaint.style = Paint.Style.STROKE
+        trackPaint.strokeCap = Paint.Cap.ROUND
 
         pocketPaint.color = Color.parseColor("#E0FFFFFF")
         pocketPaint.style = Paint.Style.FILL
-
         pocketRing.color = Color.parseColor("#FFEB3B")
         pocketRing.style = Paint.Style.STROKE
         pocketRing.strokeWidth = 3f
+
+        guidePaint.color = Color.parseColor("#AAFFEB3B")
+        guidePaint.strokeWidth = 5f
+        guidePaint.style = Paint.Style.STROKE
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        // حدود أدق لسطح اللعب داخل الإطار الخشبي
         tableL = w * 0.125f
         tableR = w * 0.875f
         tableT = h * 0.195f
@@ -108,13 +107,12 @@ class OverlayView(context: Context) : View(context) {
         tableCX = (tableL + tableR) / 2f
         tableCY = (tableT + tableB) / 2f
 
-        // 6 جيوب: 4 زوايا + وسط الأعلى والأسفل
-        pockets[0][0] = tableL; pockets[0][1] = tableT           // أعلى يسار
-        pockets[1][0] = tableCX; pockets[1][1] = tableT          // أعلى وسط
-        pockets[2][0] = tableR; pockets[2][1] = tableT           // أعلى يمين
-        pockets[3][0] = tableL; pockets[3][1] = tableB           // أسفل يسار
-        pockets[4][0] = tableCX; pockets[4][1] = tableB          // أسفل وسط
-        pockets[5][0] = tableR; pockets[5][1] = tableB           // أسفل يمين
+        pockets[0][0] = tableL; pockets[0][1] = tableT
+        pockets[1][0] = tableCX; pockets[1][1] = tableT
+        pockets[2][0] = tableR; pockets[2][1] = tableT
+        pockets[3][0] = tableL; pockets[3][1] = tableB
+        pockets[4][0] = tableCX; pockets[4][1] = tableB
+        pockets[5][0] = tableR; pockets[5][1] = tableB
     }
 
     fun addNewLine() {
@@ -127,11 +125,28 @@ class OverlayView(context: Context) : View(context) {
         lines.clear()
         activeIndex = -1
         showGrid = false
+        hasTrack = false
         invalidate()
     }
 
-    fun clearAutoLine() { invalidate() }
-    fun setAutoLine(x1: Float, y1: Float, x2: Float, y2: Float) { }
+    fun clearAutoLine() {
+        hasTrack = false
+        invalidate()
+    }
+
+    fun setAutoLine(x1: Float, y1: Float, x2: Float, y2: Float) {
+        val a = 0.4f
+        if (hasTrack) {
+            tx1 = tx1 * (1 - a) + x1 * a
+            ty1 = ty1 * (1 - a) + y1 * a
+            tx2 = tx2 * (1 - a) + x2 * a
+            ty2 = ty2 * (1 - a) + y2 * a
+        } else {
+            tx1 = x1; ty1 = y1; tx2 = x2; ty2 = y2
+        }
+        hasTrack = true
+        post { invalidate() }
+    }
 
     fun toggleBankMode() { bankMode = !bankMode }
     fun toggleGrid() { showGrid = !showGrid; invalidate() }
@@ -141,15 +156,26 @@ class OverlayView(context: Context) : View(context) {
         super.onDraw(canvas)
 
         if (showGrid) {
-            drawPocketGuides(canvas)
-            drawCushionGuides(canvas)
-            drawPocketMarkers(canvas)
+            for (i in pockets.indices) {
+                val p = Paint(pathPaints[i % pathPaints.size])
+                p.strokeWidth = 5.5f
+                p.alpha = 180
+                canvas.drawLine(tableCX, tableCY, pockets[i][0], pockets[i][1], p)
+                canvas.drawCircle(pockets[i][0], pockets[i][1], 14f, pocketPaint)
+                canvas.drawCircle(pockets[i][0], pockets[i][1], 14f, pocketRing)
+            }
+            canvas.drawRect(tableL, tableT, tableR, tableB, guidePaint)
+        }
+
+        // الخط التلقائي الأحمر
+        if (hasTrack) {
+            canvas.drawLine(tx1, ty1, tx2, ty2, trackPaint)
+            drawArrowHead(canvas, tx1, ty1, tx2, ty2, trackPaint.color)
+            drawProTrajectory(canvas, tx1, ty1, tx2, ty2, 0)
         }
 
         for ((index, line) in lines.withIndex()) {
-            val colorIndex = index % pathPaints.size
-            val paint = pathPaints[colorIndex]
-
+            val paint = pathPaints[index % pathPaints.size]
             canvas.drawLine(line[0], line[1], line[2], line[3], paint)
             drawArrowHead(canvas, line[0], line[1], line[2], line[3], paint.color)
 
@@ -159,91 +185,15 @@ class OverlayView(context: Context) : View(context) {
                 canvas.drawCircle(line[2], line[3], handleR, handleFill)
                 canvas.drawCircle(line[2], line[3], handleR, handleStroke)
             }
-
-            // مسار ارتداد طويل
-            drawProTrajectory(canvas, line[0], line[1], line[2], line[3], colorIndex)
-
-            // خطوط من نهاية التوجيه نحو كل جيب
-            if (showGrid) {
-                drawLinesToPockets(canvas, line[2], line[3], colorIndex)
-            }
+            drawProTrajectory(canvas, line[0], line[1], line[2], line[3], index % pathPaints.size)
         }
     }
 
-    /** خطوط سميكة من وسط الطاولة ومن نقاط مهمة نحو الجيوب */
-    private fun drawPocketGuides(canvas: Canvas) {
-        // من المركز لكل جيب
-        for (i in pockets.indices) {
-            val p = pathPaints[i % pathPaints.size]
-            val thick = Paint(p)
-            thick.strokeWidth = 5.5f
-            thick.alpha = 180
-            canvas.drawLine(tableCX, tableCY, pockets[i][0], pockets[i][1], thick)
-        }
-
-        // خطوط بين الجيوب المتقابلة (مساعدة زاوية)
-        val cross = Paint(guidePaint)
-        cross.strokeWidth = 4f
-        cross.alpha = 140
-        // زوايا متقابلة
-        canvas.drawLine(pockets[0][0], pockets[0][1], pockets[5][0], pockets[5][1], cross)
-        canvas.drawLine(pockets[2][0], pockets[2][1], pockets[3][0], pockets[3][1], cross)
-        // وسط علوي/سفلي
-        canvas.drawLine(pockets[1][0], pockets[1][1], pockets[4][0], pockets[4][1], cross)
-    }
-
-    /** خطوط مساعدة على البنود (حواشي الطاولة) */
-    private fun drawCushionGuides(canvas: Canvas) {
-        val n = 5 // تقسيم كل ضلع
-        val paint = Paint(cushionPaint)
-        paint.strokeWidth = 3.5f
-
-        for (i in 1 until n) {
-            val fx = i / n.toFloat()
-            // عمودي من الأعلى للأسفل
-            val x = tableL + (tableR - tableL) * fx
-            canvas.drawLine(x, tableT, x, tableB, paint)
-            // أفقي من اليسار لليمين
-            val y = tableT + (tableB - tableT) * fx
-            canvas.drawLine(tableL, y, tableR, y, paint)
-        }
-
-        // إطار الطاولة أوضح
-        val border = Paint(guidePaint)
-        border.strokeWidth = 6f
-        border.color = Color.parseColor("#AAFFEB3B")
-        canvas.drawRect(tableL, tableT, tableR, tableB, border)
-    }
-
-    private fun drawPocketMarkers(canvas: Canvas) {
-        for (p in pockets) {
-            canvas.drawCircle(p[0], p[1], 14f, pocketPaint)
-            canvas.drawCircle(p[0], p[1], 14f, pocketRing)
-        }
-    }
-
-    private fun drawLinesToPockets(canvas: Canvas, x: Float, y: Float, colorIndex: Int) {
-        for (i in pockets.indices) {
-            val paint = Paint(pathPaints[(colorIndex + i) % pathPaints.size])
-            paint.strokeWidth = 3.5f
-            paint.alpha = 160
-            canvas.drawLine(x, y, pockets[i][0], pockets[i][1], paint)
-        }
-    }
-
-    private fun drawProTrajectory(
-        canvas: Canvas,
-        sx: Float,
-        sy: Float,
-        ex: Float,
-        ey: Float,
-        startColor: Int
-    ) {
+    private fun drawProTrajectory(canvas: Canvas, sx: Float, sy: Float, ex: Float, ey: Float, startColor: Int) {
         val dx = ex - sx
         val dy = ey - sy
         val len = sqrt(dx * dx + dy * dy)
         if (len < 1f) return
-
         var dirX = dx / len
         var dirY = dy / len
         var cx = ex
@@ -260,7 +210,6 @@ class OverlayView(context: Context) : View(context) {
             canvas.drawLine(cx, cy, hit[0], hit[1], paint)
             hitPaint.color = paint.color
             canvas.drawCircle(hit[0], hit[1], 10f, hitPaint)
-
             val nx = hit[2]
             val ny = hit[3]
             val dot = dirX * nx + dirY * ny
@@ -289,7 +238,6 @@ class OverlayView(context: Context) : View(context) {
         var hy = 0f
         var nx = 0f
         var ny = 0f
-
         if (dirX < -1e-4f) {
             val t = (tableL - cx) / dirX
             if (t > 1f && t < tHit) {

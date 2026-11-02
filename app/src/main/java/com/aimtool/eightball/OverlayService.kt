@@ -1,24 +1,14 @@
 package com.aimtool.eightball
 
-import android.app.Activity
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.graphics.Bitmap
 import android.graphics.PixelFormat
-import android.hardware.display.DisplayManager
-import android.hardware.display.VirtualDisplay
-import android.media.ImageReader
-import android.media.projection.MediaProjection
-import android.media.projection.MediaProjectionManager
 import android.os.Build
-import android.os.Handler
-import android.os.HandlerThread
 import android.os.IBinder
 import android.provider.Settings
-import android.util.DisplayMetrics
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -29,6 +19,7 @@ import android.widget.Toast
 import androidx.appcompat.view.ContextThemeWrapper
 import androidx.core.app.NotificationCompat
 
+/** يدوي فقط — بدون التقاط شاشة */
 class OverlayService : Service() {
 
     private var windowManager: WindowManager? = null
@@ -38,47 +29,12 @@ class OverlayService : Service() {
     private var overlayParams: WindowManager.LayoutParams? = null
     private var isEditMode = true
 
-    private var mediaProjection: MediaProjection? = null
-    private var virtualDisplay: VirtualDisplay? = null
-    private var imageReader: ImageReader? = null
-    private var captureThread: HandlerThread? = null
-    private var captureHandler: Handler? = null
-    private var screenW = 1080
-    private var screenH = 1920
-    private var density = 320
-    private var autoOn = false
-    private var boundsReady = false
-    private var frameCount = 0
-
     override fun onBind(intent: Intent?): IBinder? = null
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent != null) {
-            val resultCode = intent.getIntExtra("resultCode", 0)
-            val data = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                intent.getParcelableExtra("data", Intent::class.java)
-            } else {
-                @Suppress("DEPRECATION")
-                intent.getParcelableExtra("data")
-            }
-            if (resultCode == Activity.RESULT_OK && data != null) {
-                startCapture(resultCode, data)
-            }
-        }
-        return START_STICKY
-    }
 
     override fun onCreate() {
         super.onCreate()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         startFg()
-
-        val metrics = DisplayMetrics()
-        @Suppress("DEPRECATION")
-        windowManager?.defaultDisplay?.getRealMetrics(metrics)
-        screenW = metrics.widthPixels
-        screenH = metrics.heightPixels
-        density = metrics.densityDpi
 
         if (!Settings.canDrawOverlays(this)) {
             Toast.makeText(this, "الصلاحية غير مفعلة", Toast.LENGTH_LONG).show()
@@ -89,7 +45,11 @@ class OverlayService : Service() {
         try {
             setupOverlay()
             setupControls()
-            Toast.makeText(this, "وضع احترافي: وافق على التقاط الشاشة", Toast.LENGTH_LONG).show()
+            Toast.makeText(
+                this,
+                "يدوي: + خط | بوصلة تصادم كرات | طويل على + شبكة",
+                Toast.LENGTH_LONG
+            ).show()
         } catch (e: Exception) {
             Toast.makeText(this, "خطأ: " + e.message, Toast.LENGTH_LONG).show()
             stopSelf()
@@ -103,126 +63,17 @@ class OverlayService : Service() {
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
         val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Aim Tool 8 Ball Pro")
-            .setContentText("تتبع + معايرة طاولة")
+            .setContentTitle("Aim Tool 8 Ball")
+            .setContentText("وضع يدوي احترافي")
             .setSmallIcon(android.R.drawable.ic_menu_compass)
             .setOngoing(true)
             .build()
 
         if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(
-                1,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
-            )
+            startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
             startForeground(1, notification)
         }
-    }
-
-    private fun startCapture(resultCode: Int, data: Intent) {
-        val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        mediaProjection = mpm.getMediaProjection(resultCode, data)
-        mediaProjection?.registerCallback(object : MediaProjection.Callback() {
-            override fun onStop() { stopCapture() }
-        }, null)
-
-        captureThread = HandlerThread("aim-capture").also { it.start() }
-        captureHandler = Handler(captureThread!!.looper)
-
-        imageReader = ImageReader.newInstance(screenW, screenH, PixelFormat.RGBA_8888, 2)
-        virtualDisplay = mediaProjection?.createVirtualDisplay(
-            "AimTrack",
-            screenW,
-            screenH,
-            density,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            imageReader?.surface,
-            null,
-            captureHandler
-        )
-
-        autoOn = true
-        boundsReady = false
-        frameCount = 0
-        schedule()
-        Toast.makeText(this, "التتبع الاحترافي يعمل", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun schedule() {
-        captureHandler?.postDelayed(object : Runnable {
-            override fun run() {
-                if (autoOn) {
-                    processFrame()
-                    // أسرع قليلاً للتتبع الأنعم
-                    captureHandler?.postDelayed(this, 280)
-                }
-            }
-        }, 350)
-    }
-
-    private fun processFrame() {
-        val reader = imageReader ?: return
-        val image = reader.acquireLatestImage() ?: return
-        try {
-            val plane = image.planes[0]
-            val buffer = plane.buffer
-            val pixelStride = plane.pixelStride
-            val rowStride = plane.rowStride
-            val rowPadding = rowStride - pixelStride * screenW
-
-            val bmp = Bitmap.createBitmap(
-                screenW + rowPadding / pixelStride,
-                screenH,
-                Bitmap.Config.ARGB_8888
-            )
-            bmp.copyPixelsFromBuffer(buffer)
-            val cropped = Bitmap.createBitmap(bmp, 0, 0, screenW, screenH)
-            bmp.recycle()
-
-            frameCount++
-
-            // معايرة حدود الطاولة أول إطارات ثم كل فترة
-            if (!boundsReady || frameCount % 25 == 0) {
-                val bounds = LineDetector.detectTableBounds(cropped)
-                if (bounds != null) {
-                    overlayView?.applyBounds(bounds.left, bounds.top, bounds.right, bounds.bottom)
-                    if (!boundsReady) {
-                        boundsReady = true
-                        captureHandler?.post {
-                            Toast.makeText(this@OverlayService, "تم قياس الطاولة", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }
-            }
-
-            val detected = LineDetector.detectAimLine(cropped)
-            cropped.recycle()
-
-            if (detected != null) {
-                overlayView?.setAutoLine(detected.x1, detected.y1, detected.x2, detected.y2)
-            }
-        } catch (_: Exception) {
-        } finally {
-            image.close()
-        }
-    }
-
-    private fun stopCapture() {
-        autoOn = false
-        try {
-            virtualDisplay?.release()
-            imageReader?.close()
-            mediaProjection?.stop()
-        } catch (_: Exception) {
-        }
-        virtualDisplay = null
-        imageReader = null
-        mediaProjection = null
-        captureThread?.quitSafely()
-        captureThread = null
-        captureHandler = null
     }
 
     private fun setupOverlay() {
@@ -308,19 +159,24 @@ class OverlayService : Service() {
         })
 
         controlsView?.findViewById<ImageButton>(R.id.btnAddLine)?.setOnClickListener {
-            overlayView?.addNewLine()
+            overlayView?.addAimLine()
+            Toast.makeText(this, "اسحب: نقطة البيضة ← نقطة التصادم", Toast.LENGTH_SHORT).show()
         }
         controlsView?.findViewById<ImageButton>(R.id.btnAddLine)?.setOnLongClickListener {
             overlayView?.toggleGrid()
-            Toast.makeText(this, "شبكة الجيوب والبنود", Toast.LENGTH_SHORT).show()
             true
         }
         controlsView?.findViewById<ImageButton>(R.id.btnClear)?.setOnClickListener {
             overlayView?.clearAll()
         }
+        // بوصلة = وضع التصادم (مسار الكرة الهدف + انحراف البيضة)
         controlsView?.findViewById<ImageButton>(R.id.btnBank)?.setOnClickListener {
-            overlayView?.toggleBankMode()
-            overlayView?.addNewLine()
+            overlayView?.addCollisionShot()
+            Toast.makeText(
+                this,
+                "تصادم: أصفر=تصويب | أخضر=مسار الكرة | أزرق=انحراف البيضة",
+                Toast.LENGTH_LONG
+            ).show()
         }
         controlsView?.findViewById<ImageButton>(R.id.btnClose)?.setOnClickListener {
             isEditMode = !isEditMode
@@ -337,7 +193,6 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        stopCapture()
         try {
             overlayView?.let { windowManager?.removeView(it) }
             controlsView?.let { windowManager?.removeView(it) }

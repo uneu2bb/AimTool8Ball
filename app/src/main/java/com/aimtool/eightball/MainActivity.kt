@@ -1,8 +1,6 @@
 package com.aimtool.eightball
 
-import android.app.Activity
 import android.content.Intent
-import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -15,7 +13,6 @@ import androidx.appcompat.app.AppCompatActivity
 class MainActivity : AppCompatActivity() {
 
     private var isServiceRunning = false
-    private val REQ_CAPTURE = 1001
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,27 +39,11 @@ class MainActivity : AppCompatActivity() {
             )
             return
         }
-        val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        startActivityForResult(mpm.createScreenCaptureIntent(), REQ_CAPTURE)
+        startOverlay()
     }
 
-    @Deprecated("Deprecated in Java")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQ_CAPTURE) {
-            if (resultCode == Activity.RESULT_OK && data != null) {
-                startOverlay(resultCode, data)
-            } else {
-                Toast.makeText(this, "تشغيل يدوي بدون تتبع تلقائي", Toast.LENGTH_SHORT).show()
-                startOverlay(0, null)
-            }
-        }
-    }
-
-    private fun startOverlay(resultCode: Int, data: Intent?) {
+    private fun startOverlay() {
         val intent = Intent(this, OverlayService::class.java)
-        intent.putExtra("resultCode", resultCode)
-        if (data != null) intent.putExtra("data", data)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(intent)
         } else {
@@ -70,6 +51,7 @@ class MainActivity : AppCompatActivity() {
         }
         isServiceRunning = true
         updateUI()
+        Toast.makeText(this, getString(R.string.overlay_running), Toast.LENGTH_SHORT).show()
     }
 
     private fun stopOverlay() {
@@ -83,7 +65,7 @@ class MainActivity : AppCompatActivity() {
         val status = findViewById<TextView>(R.id.statusText)
         if (isServiceRunning) {
             btn.text = getString(R.string.stop_overlay)
-            status.text = "الحالة: يعمل"
+            status.text = "الحالة: يعمل (يدوي)"
         } else {
             btn.text = getString(R.string.start_overlay)
             status.text = "الحالة: متوقف"

@@ -19,7 +19,6 @@ import android.widget.Toast
 import androidx.appcompat.view.ContextThemeWrapper
 import androidx.core.app.NotificationCompat
 
-/** يدوي فقط — بدون التقاط شاشة */
 class OverlayService : Service() {
 
     private var windowManager: WindowManager? = null
@@ -47,7 +46,7 @@ class OverlayService : Service() {
             setupControls()
             Toast.makeText(
                 this,
-                "يدوي: + خط | بوصلة تصادم كرات | طويل على + شبكة",
+                "Pro: + خط | بوصلة تصادم | طويل+=شبكة | طويل بوصلة=معايرة طاولة",
                 Toast.LENGTH_LONG
             ).show()
         } catch (e: Exception) {
@@ -63,8 +62,8 @@ class OverlayService : Service() {
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
         val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Aim Tool 8 Ball")
-            .setContentText("وضع يدوي احترافي")
+            .setContentTitle("Aim Tool 8 Ball Pro")
+            .setContentText("معايرة طاولة + خطوط يدوية")
             .setSmallIcon(android.R.drawable.ic_menu_compass)
             .setOngoing(true)
             .build()
@@ -158,33 +157,53 @@ class OverlayService : Service() {
             }
         })
 
-        controlsView?.findViewById<ImageButton>(R.id.btnAddLine)?.setOnClickListener {
+        val btnAdd = controlsView?.findViewById<ImageButton>(R.id.btnAddLine)
+        val btnClear = controlsView?.findViewById<ImageButton>(R.id.btnClear)
+        val btnBank = controlsView?.findViewById<ImageButton>(R.id.btnBank)
+        val btnClose = controlsView?.findViewById<ImageButton>(R.id.btnClose)
+
+        btnAdd?.setOnClickListener {
             overlayView?.addAimLine()
-            Toast.makeText(this, "اسحب: نقطة البيضة ← نقطة التصادم", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "خط تصويب: بيضة → هدف", Toast.LENGTH_SHORT).show()
         }
-        controlsView?.findViewById<ImageButton>(R.id.btnAddLine)?.setOnLongClickListener {
+        btnAdd?.setOnLongClickListener {
             overlayView?.toggleGrid()
+            Toast.makeText(this, "شبكة الجيوب", Toast.LENGTH_SHORT).show()
             true
         }
-        controlsView?.findViewById<ImageButton>(R.id.btnClear)?.setOnClickListener {
-            overlayView?.clearAll()
+
+        btnClear?.setOnClickListener { overlayView?.clearAll() }
+        btnClear?.setOnLongClickListener {
+            overlayView?.clearBalls()
+            Toast.makeText(this, "تم مسح علامات الكرات", Toast.LENGTH_SHORT).show()
+            true
         }
-        // بوصلة = وضع التصادم (مسار الكرة الهدف + انحراف البيضة)
-        controlsView?.findViewById<ImageButton>(R.id.btnBank)?.setOnClickListener {
+
+        btnBank?.setOnClickListener {
             overlayView?.addCollisionShot()
-            Toast.makeText(
-                this,
-                "تصادم: أصفر=تصويب | أخضر=مسار الكرة | أزرق=انحراف البيضة",
-                Toast.LENGTH_LONG
-            ).show()
+            Toast.makeText(this, "تصادم: أصفر/أخضر/أزرق", Toast.LENGTH_SHORT).show()
         }
-        controlsView?.findViewById<ImageButton>(R.id.btnClose)?.setOnClickListener {
+        // طويل على البوصلة = معايرة الطاولة
+        btnBank?.setOnLongClickListener {
+            overlayView?.toggleCalibrate()
+            Toast.makeText(this, "معايرة الطاولة: اسحب الزوايا البرتقالية", Toast.LENGTH_LONG).show()
+            true
+        }
+
+        btnClose?.setOnClickListener {
             isEditMode = !isEditMode
             updateTouch(isEditMode)
             Toast.makeText(this, if (isEditMode) "تعديل" else "لعب", Toast.LENGTH_SHORT).show()
         }
-        controlsView?.findViewById<ImageButton>(R.id.btnClose)?.setOnLongClickListener {
-            stopSelf()
+        // طويل على X = وضع وضع علامات الكرات
+        btnClose?.setOnLongClickListener {
+            // إذا تعديل: وضع كرات، وإلا إيقاف
+            if (isEditMode) {
+                overlayView?.toggleBallPlace()
+                Toast.makeText(this, "وضع علامات الكرات: اضغط على الطاولة", Toast.LENGTH_LONG).show()
+            } else {
+                stopSelf()
+            }
             true
         }
 

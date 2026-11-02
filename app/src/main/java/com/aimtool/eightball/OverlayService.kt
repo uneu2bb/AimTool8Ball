@@ -47,6 +47,8 @@ class OverlayService : Service() {
     private var screenH = 1920
     private var density = 320
     private var autoOn = false
+    private var boundsReady = false
+    private var frameCount = 0
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -87,7 +89,7 @@ class OverlayService : Service() {
         try {
             setupOverlay()
             setupControls()
-            Toast.makeText(this, "الأداة تعمل - وافق على التقاط الشاشة للتتبع", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "وضع احترافي: وافق على التقاط الشاشة", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
             Toast.makeText(this, "خطأ: " + e.message, Toast.LENGTH_LONG).show()
             stopSelf()
@@ -101,8 +103,8 @@ class OverlayService : Service() {
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
         val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Aim Tool 8 Ball")
-            .setContentText("تتبع الخط التلقائي")
+            .setContentTitle("Aim Tool 8 Ball Pro")
+            .setContentText("تتبع + معايرة طاولة")
             .setSmallIcon(android.R.drawable.ic_menu_compass)
             .setOngoing(true)
             .build()
@@ -142,8 +144,10 @@ class OverlayService : Service() {
         )
 
         autoOn = true
+        boundsReady = false
+        frameCount = 0
         schedule()
-        Toast.makeText(this, "التتبع التلقائي شغال", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "التتبع الاحترافي يعمل", Toast.LENGTH_SHORT).show()
     }
 
     private fun schedule() {
@@ -151,10 +155,11 @@ class OverlayService : Service() {
             override fun run() {
                 if (autoOn) {
                     processFrame()
-                    captureHandler?.postDelayed(this, 350)
+                    // أسرع قليلاً للتتبع الأنعم
+                    captureHandler?.postDelayed(this, 280)
                 }
             }
-        }, 400)
+        }, 350)
     }
 
     private fun processFrame() {
@@ -176,12 +181,27 @@ class OverlayService : Service() {
             val cropped = Bitmap.createBitmap(bmp, 0, 0, screenW, screenH)
             bmp.recycle()
 
+            frameCount++
+
+            // معايرة حدود الطاولة أول إطارات ثم كل فترة
+            if (!boundsReady || frameCount % 25 == 0) {
+                val bounds = LineDetector.detectTableBounds(cropped)
+                if (bounds != null) {
+                    overlayView?.applyBounds(bounds.left, bounds.top, bounds.right, bounds.bottom)
+                    if (!boundsReady) {
+                        boundsReady = true
+                        captureHandler?.post {
+                            Toast.makeText(this@OverlayService, "تم قياس الطاولة", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            }
+
             val detected = LineDetector.detectAimLine(cropped)
             cropped.recycle()
 
             if (detected != null) {
-                val ext = LineDetector.extendLine(detected, 3.5f)
-                overlayView?.setAutoLine(ext.x1, ext.y1, ext.x2, ext.y2)
+                overlayView?.setAutoLine(detected.x1, detected.y1, detected.x2, detected.y2)
             }
         } catch (_: Exception) {
         } finally {
@@ -292,7 +312,7 @@ class OverlayService : Service() {
         }
         controlsView?.findViewById<ImageButton>(R.id.btnAddLine)?.setOnLongClickListener {
             overlayView?.toggleGrid()
-            Toast.makeText(this, "شبكة الجيوب", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "شبكة الجيوب والبنود", Toast.LENGTH_SHORT).show()
             true
         }
         controlsView?.findViewById<ImageButton>(R.id.btnClear)?.setOnClickListener {
